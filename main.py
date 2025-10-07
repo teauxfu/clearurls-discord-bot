@@ -2,13 +2,17 @@ import asyncio
 import os
 import re
 import discord
+import logging
 from dotenv import load_dotenv
 from unalix import clear_url
 from prometheus_client import start_http_server, Summary, Counter, Gauge
+from database.util import get_dbcon, ensure_settings_table, ensure_guild_automod_setting
 
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
+logger = logging.getLogger(__name__)
+automod_map: dict[int, bool] = { }
 
 process_message_time = Summary('process_message_time', 'Time spent processing message')
 process_react_time = Summary('process_react_time', 'Time spent processing react')
@@ -26,12 +30,25 @@ async def count_servers_members():
 
 @client.event
 async def on_ready():
+    con = get_dbcon()
+    with con:
+        ensure_settings_table()
+        for guild in client.guilds:
+            ensure_guild_automod_setting(con, guild.id)
+    con.close()
+
     await client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name='for tracking links'))
     asyncio.create_task(count_servers_members())
+
+async def delete_message(message):
+    pass
 
 @process_message_time.time()
 @client.event
 async def on_message(message):
+
+    # TODO modify this method such that 
+
     messages.inc()
     permissions = message.channel.permissions_for(message.guild.me)
     if message.author == client.user:
