@@ -14,7 +14,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 logger = logging.getLogger(__name__)
-automod_map: dict[int, bool] = { }
 
 process_message_time = Summary('process_message_time', 'Time spent processing message')
 process_react_time = Summary('process_react_time', 'Time spent processing react')
@@ -71,9 +70,9 @@ async def on_message(message: discord.Message):
             if clear_url(url).strip('&') != url.strip('&'):
                 cleaned.append(clear_url(url))
 
-        if not len(cleaned) > 0:
+        if not cleaned:
             return
-
+        
         con = get_dbcon()
         # in case this guild was added after startup, make sure it has a row in the db
         ensure_guild_automod_setting(con, message.guild.id)
@@ -100,19 +99,19 @@ async def on_message(message: discord.Message):
             # Suppress embeds for original message to avoid visual clutter
             if permissions.manage_messages:
                 await message.edit(suppress=True)
-            text = f'It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed:\n{'\n'.join(cleaned)}'
+            text = f'It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed:\n{"\n".join(cleaned)}'
             await message.reply(text, mention_author=False)
             cleaned_messages.inc()
 
 @process_react_time.time()
 @client.event
-async def on_raw_reaction_add(reaction: discord.RawReactionActionEvent):
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     # Delete messages if the original sender clicks the trash can react
-    if reaction.emoji.name != '🗑' or reaction.user_id == client.user.id:
+    if payload.emoji.name != '🗑' or payload.user_id == client.user.id:
         return
 
-    channel = await client.fetch_channel(reaction.channel_id)
-    message = await channel.fetch_message(reaction.message_id)
+    channel = await client.fetch_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
 
     if message.reference is None or message.author != client.user:
         return
@@ -120,7 +119,7 @@ async def on_raw_reaction_add(reaction: discord.RawReactionActionEvent):
     # determine if the user reacting is the one whose message we are working with
     permissions = message.channel.permissions_for(message.guild.me)
     original_channel = await client.fetch_channel(message.reference.channel_id)
-    reacting_user = await client.fetch_user(reaction.user_id)
+    reacting_user = await client.fetch_user(payload.user_id)
     # before we check the API to do this "auth check", see if this is a message we deleted
     con = get_dbcon()
     user_id_whose_message_we_deleted = get_deleted_message_author(con, message.reference.message_id)
