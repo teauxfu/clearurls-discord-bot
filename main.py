@@ -6,7 +6,9 @@ import logging
 from dotenv import load_dotenv
 from unalix import clear_url
 from prometheus_client import start_http_server, Summary, Counter, Gauge
-from database.util import get_dbcon, ensure_settings_table, ensure_guild_automod_setting
+from database.util import get_dbcon
+from database.guildsettings import ensure_settings_table, ensure_guild_automod_setting, get_automod_setting
+from database.auditlog import ensure_deleted_messages_table, compact_deleted_messages_table, insert_deleted_message, get_deleted_message_author
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -32,7 +34,9 @@ async def count_servers_members():
 async def on_ready():
     con = get_dbcon()
     with con:
-        ensure_settings_table()
+        ensure_settings_table(con)
+        ensure_deleted_messages_table(con)
+        compact_deleted_messages_table(con)
         for guild in client.guilds:
             ensure_guild_automod_setting(con, guild.id)
     con.close()
@@ -40,15 +44,10 @@ async def on_ready():
     await client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name='for tracking links'))
     asyncio.create_task(count_servers_members())
 
-async def delete_message(message):
-    pass
 
 @process_message_time.time()
 @client.event
-async def on_message(message):
-
-    # TODO modify this method such that 
-
+async def on_message(message: discord.Message):
     messages.inc()
     permissions = message.channel.permissions_for(message.guild.me)
     if message.author == client.user:
@@ -72,37 +71,71 @@ async def on_message(message):
             if clear_url(url).strip('&') != url.strip('&'):
                 cleaned.append(clear_url(url))
 
-        # Send message and add reactions
-        if cleaned:
+        if not len(cleaned) > 0:
+            return
+
+        con = get_dbcon()
+        # in case this guild was added after startup, make sure it has a row in the db
+        ensure_guild_automod_setting(con, message.guild.id)
+        should_delete_dirty_message = get_automod_setting(con, message.guild.id)
+        con.close()
+        # there are two paths we can take in response
+        # if the automod setting is enabled we delete the offending message and repost the cleaned one
+        # if the automod setting is disabled we simply add a new message with the links removed
+        if should_delete_dirty_message:
+            cleaned_content = message.content
+            for url in urls:
+                cleaned_content = cleaned_content.replace(url, clear_url(url))
+            text = f'User {message.author} sent the following message, which was deleted and has automatically been cleaned from tracking links:\n\n{cleaned_content}'
+            await message.reply(text, mention_author=False)
+            cleaned_messages.inc()
+            await message.delete()
+            con = get_dbcon()
+            with con:
+                insert_deleted_message(con, message)
+            con.close()
+            deleted_messages.inc()
+        else:
+            # Send message and add reactions
             # Suppress embeds for original message to avoid visual clutter
             if permissions.manage_messages:
                 await message.edit(suppress=True)
-            text = 'It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed:\n' + '\n'.join(cleaned)
+            text = f'It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed:\n{'\n'.join(cleaned)}'
             await message.reply(text, mention_author=False)
             cleaned_messages.inc()
 
 @process_react_time.time()
 @client.event
-async def on_raw_reaction_add(payload):
+async def on_raw_reaction_add(reaction: discord.RawReactionActionEvent):
     # Delete messages if the original sender clicks the trash can react
-    if payload.emoji.name != '🗑':
+    if reaction.emoji.name != '🗑' or reaction.user_id == client.user.id:
         return
 
-    channel = await client.fetch_channel(payload.channel_id)
-    message = await channel.fetch_message(payload.message_id)
+    channel = await client.fetch_channel(reaction.channel_id)
+    message = await channel.fetch_message(reaction.message_id)
 
     if message.reference is None or message.author != client.user:
         return
 
-    original_channel = await client.fetch_channel(message.reference.channel_id)
-    original_message = await original_channel.fetch_message(message.reference.message_id)
-    user = await client.fetch_user(payload.user_id)
+    # determine if the user reacting is the one whose message we are working with
     permissions = message.channel.permissions_for(message.guild.me)
-
-    if permissions.manage_messages and original_message.author == user:
+    original_channel = await client.fetch_channel(message.reference.channel_id)
+    reacting_user = await client.fetch_user(reaction.user_id)
+    # before we check the API to do this "auth check", see if this is a message we deleted
+    con = get_dbcon()
+    user_id_whose_message_we_deleted = get_deleted_message_author(con, message.reference.message_id)
+    con.close()
+    if permissions.manage_messages and user_id_whose_message_we_deleted == reacting_user.id:
         await message.delete()
         deleted_messages.inc()
+        return
     
+    # it doesn't look like this is a message we deleted during automod, so check the API
+    original_message = await original_channel.fetch_message(message.reference.message_id)
+    if permissions.manage_messages and original_message.author == reacting_user:
+        await message.delete()
+        deleted_messages.inc()
+  
 if __name__ == '__main__':
     start_http_server(8000)
     load_dotenv()
