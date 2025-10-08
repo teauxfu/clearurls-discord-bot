@@ -3,7 +3,7 @@
 
 ## Dev tools
 
-Links to downloads you may want/need
+Links to downloads/info you may want/need
 
 - https://discord.com/developers/applications
 - https://git-scm.com/downloads
@@ -11,6 +11,8 @@ Links to downloads you may want/need
 - https://www.python.org/downloads/
 - https://sqlite.org/download.html
 - https://code.visualstudio.com/download
+- https://discord.com/developers/docs/
+- https://discordpy.readthedocs.io/en/latest/api.html
 
 Note you may need to complete an MFA step in the browser before you can generate a bot token. 
 
