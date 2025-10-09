@@ -14,9 +14,12 @@ Disclaimer: This public instance is hosted on my Raspberry Pi and I make no guar
 ## Permissions
 The bot's permissions system is designed to be granular, minimal, and gracefully degrade in the absence of those unnecessary for basic function.
 
-- *Read Messages* and *Send Messages* are **required** to perform the cleaning.
-- *Manage Messages* is **recommended** so the bot can suppress embeds on the original message's links to reduce visual clutter. Otherwise, it will suppress embeds on its own links.
-- *Read Message History* and *Add Reactions* are **optional** for the original poster to easily delete the bot's replies with the `:wastebasket:` emoji. Note that these two permissions are on by default for `@everyone`. If you want to disable react-to-remove, turn off these permissions for `@everyone` and give every human in your server a new role. This functionality also **requires** *Manage Messages* for deletion.
+- `Read Messages` and `Send Messages` are **required** to perform the cleaning.
+- `Manage Messages` is **recommended** so the bot can suppress embeds on the original message's links to reduce visual clutter. Otherwise, it will suppress embeds on its own links.
+- `Read Message History` and `Add Reactions` are **optional** for the original poster to easily delete the bot's replies with the `:wastebasket:` emoji. Note that these two permissions are on by default for `@everyone`. If you want to disable react-to-remove, turn off these permissions for `@everyone` and give every human in your server a new role. This functionality also **requires** `Manage Messages` for deletion.
+- `Use Slash Commands` is required to enable/disable the automoderation feature. In this mode, messages with dirty links are deleted, and the bot replies with the same message, but with the URLs replaced.
+
+![screenshot of default installation settings](/docs/default_install_settings.png)
 
 ## Self-Hosting
 It is very straightforward to host this yourself. If you do, I would love to know!
@@ -24,10 +27,13 @@ It is very straightforward to host this yourself. If you do, I would love to kno
 1. Download the repository with `git clone https://github.com/DanielZTing/clearurls-discord-bot`
 2. Get dependencies with `pip install -r requirements.txt`
 3. Set up a new application at the [Discord Developer Portal](https://discord.com/developers/applications)
-4. Add a bot and check the `bot` scope and the above permissions in the OAuth2 tab
+4. Add a bot and check the `bot` and `applications.commands` scopes and the above permissions in the OAuth2 tab
 5. Visit the generated link to invite the bot
 6. Copy the token from the Bot tab and paste `TOKEN=[your clipboard here]` into a file named `.env`
 7. Run with `python main.py`
 
+
 ## Privacy Policy
 I collect zero information.
+
+For servers using the optional feature to automatically delete messages with tracking links, some metadata about deleted messages is temporarily stored for up to 14 days. The only data stored is the user id, the message id, and the message timestamp. No message content is stored or logged. 
