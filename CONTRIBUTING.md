@@ -9,7 +9,7 @@ Links to downloads/info you may want/need
 - https://git-scm.com/downloads
 - https://cli.github.com/
 - https://www.python.org/downloads/
-- https://sqlite.org/download.html
+- https://docs.python.org/3/library/sqlite3.html
 - https://code.visualstudio.com/download
 - https://discord.com/developers/docs/
 - https://discordpy.readthedocs.io/en/latest/api.html
@@ -39,3 +39,11 @@ Then install dependencies with `pip install -r requirements.txt`
 The [unalix](https://github.com/AmanoTeam/Unalix/tree/master/unalix) library is archived. Its source is included in this project in the `unalix` folder.
 
 The bot itself is in `main.py`.
+
+The bot uses a couple sqlite tables to persist data. Functions to initialize and interact with the database are in the `database` folder.
+
+`guildsettings.py` is for Discord server specific settings. Currently we use a small lookup table to store that flag.
+
+`auditlog.py` is used to store a log of messages deleted by the bot within the last 2 weeks, for guilds that have enabled the auto-delete feature. These user ids are retained for the purposes of verifying that a user reacting with the trashcan emoji to delete the bot's post is the same person whose message was moderated.
+
+`util.py` has a function for getting a sqlite db connection with some flags that enable better support for timestamps.

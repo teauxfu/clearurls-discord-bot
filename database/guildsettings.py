@@ -10,7 +10,6 @@ def ensure_settings_table(con: sqlite3.Connection) -> None:
     cur.execute(sql)
     cur.close()
 
-    
 def ensure_guild_automod_setting(con: sqlite3.Connection, guild_id: int) -> None:
     sql = """
     insert into GuildSettings_DeleteAndRepostDirtyMessages (guild_id, is_enabled) 
@@ -32,3 +31,14 @@ def get_automod_setting(con: sqlite3.Connection, guild_id: int) -> bool:
     cur = con.cursor()
     res = cur.execute(sql, {"id": guild_id})
     return res.fetchone() == (1,)
+
+def set_automod_setting(con: sqlite3.Connection, guild_id: int, enabled: bool):
+    sql = """
+    update GuildSettings_DeleteAndRepostDirtyMessages 
+    set is_enabled = :enabled
+    where guild_id = :id
+    """
+    cur = con.cursor()
+    cur.execute(sql, {"enabled": enabled, "id": guild_id})
+    cur.close()
+
