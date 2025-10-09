@@ -32,7 +32,7 @@ def get_automod_setting(con: sqlite3.Connection, guild_id: int) -> bool:
     res = cur.execute(sql, {"id": guild_id})
     return res.fetchone() == (1,)
 
-def set_automod_setting(con: sqlite3.Connection, guild_id: int, enabled: bool):
+def set_automod_setting(con: sqlite3.Connection, guild_id: int, enabled: bool) -> None:
     sql = """
     update GuildSettings_DeleteAndRepostDirtyMessages 
     set is_enabled = :enabled

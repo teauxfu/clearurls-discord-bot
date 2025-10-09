@@ -7,9 +7,9 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from unalix import clear_url
 from prometheus_client import start_http_server, Summary, Counter, Gauge
-from database.util import get_dbcon
-from database.guildsettings import ensure_settings_table, ensure_guild_automod_setting, get_automod_setting, set_automod_setting
-from database.auditlog import ensure_deleted_messages_table, compact_deleted_messages_table, insert_deleted_message, get_deleted_message_author
+from database.util import get_dbcon, initialize_db
+from database.guildsettings import ensure_guild_automod_setting, get_automod_setting, set_automod_setting
+from database.auditlog import insert_deleted_message, get_deleted_message_author
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -31,23 +31,15 @@ async def count_servers_members():
         members.set(sum([guild.member_count for guild in bot.guilds]))
         await asyncio.sleep(60)
 
-def is_guild_owner():
-    def predicate(ctx: commands.Context):
-        return ctx.guild is not None and ctx.guild.owner_id == ctx.author.id
-    return commands.check(predicate)        
-
 @bot.event
 async def on_ready():
-    with get_dbcon() as con:
-        ensure_settings_table(con)
-        ensure_deleted_messages_table(con)
-        compact_deleted_messages_table(con)
-        for guild in bot.guilds:
-            ensure_guild_automod_setting(con, guild.id)
+    with get_dbcon() as con:        
+        initialize_db(con, bot.guilds)
     con.close()
 
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name='for tracking links'))
+    # sync our registered bot commands to the server
     await bot.tree.sync()
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name='for tracking links'))
     asyncio.create_task(count_servers_members())
 
 
@@ -56,14 +48,16 @@ async def on_ready():
 async def on_message(message: discord.Message):
     messages.inc()
     permissions = message.channel.permissions_for(message.guild.me)
+    can_add_reactions = (permissions.add_reactions 
+                         and permissions.read_message_history 
+                         and permissions.manage_messages)
     if message.author == bot.user:
         # Suppress embeds for bot messages if unable to suppress embeds for original message to avoid visual clutter
         if not permissions.manage_messages:
             await message.edit(suppress=True)
         # Add :wastebasket: emoji for easy deletion if necessary, but not for responses to slash commands (check for interaction metadata)
-        if message.interaction_metadata is not None:
-            pass
-        elif permissions.add_reactions and permissions.read_message_history and permissions.manage_messages:
+        message_is_command_response = message.interaction_metadata is not None
+        if can_add_reactions and not message_is_command_response:
             await message.add_reaction('🗑')
     # Though this else is not necessary since the bot should never send
     # links with tracking parameters, include it anyways to be safe
@@ -82,34 +76,35 @@ async def on_message(message: discord.Message):
         if not cleaned:
             return
         
-        con = get_dbcon()
         # in case this guild was added after startup, make sure it has a row in the db
-        ensure_guild_automod_setting(con, message.guild.id)
-        should_delete_dirty_message = get_automod_setting(con, message.guild.id)
+        with get_dbcon() as con:
+            ensure_guild_automod_setting(con, message.guild.id)
+            should_delete_dirty_message = get_automod_setting(con, message.guild.id)
         con.close()
         # there are two paths we can take in response
-        # if the automod setting is enabled we delete the offending message and repost the cleaned one
         # if the automod setting is disabled we simply add a new message with the links removed
-        if should_delete_dirty_message:
-            cleaned_content = message.content
-            for url in urls:
-                cleaned_content = cleaned_content.replace(url, clear_url(url))
-            text = f'User {message.author} sent the following message, which was deleted and has automatically been cleaned from tracking links:\n\n{cleaned_content}'
-            await message.reply(text, mention_author=False)
-            cleaned_messages.inc()
-            await message.delete()
-            with get_dbcon() as con:
-                insert_deleted_message(con, message)
-            con.close()
-            deleted_messages.inc()
-        else:
-            # Send message and add reactions
+        if not should_delete_dirty_message:
             # Suppress embeds for original message to avoid visual clutter
             if permissions.manage_messages:
                 await message.edit(suppress=True)
+            # Send message and add reactions
             text = f'It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed:\n{"\n".join(cleaned)}'
             await message.reply(text, mention_author=False)
             cleaned_messages.inc()
+            return 
+        
+        # if the automod setting is enabled we delete the offending message and repost the cleaned one
+        cleaned_content = message.content
+        for url in urls:
+            cleaned_content = cleaned_content.replace(url, clear_url(url))
+        text = f'User {message.author} sent the following message, which was deleted and has automatically been cleaned from tracking links:\n\n{cleaned_content}'
+        await message.reply(text, mention_author=False)
+        cleaned_messages.inc()
+        await message.delete()
+        with get_dbcon() as con:
+            insert_deleted_message(con, message)
+        con.close()
+        deleted_messages.inc()
 
 @process_react_time.time()
 @bot.event
@@ -142,14 +137,15 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if permissions.manage_messages and original_message.author == reacting_user:
         await message.delete()
         deleted_messages.inc()
+        logger.info("Deleted message %i via reaction by user %i", message.id, payload.user_id)
 
 @bot.tree.command(name="linkautomod", description="Enable or disable link automoderation")
 @commands.has_permissions(administrator=True)
 @commands.guild_only()
-async def linkautomod(interaction: discord.Interaction, enabled: bool):
+async def set_automod_behavior(interaction: discord.Interaction, enabled: bool):
     """Enable or disable link automoderation for this server"""
     
-    # Check if user is guild owner or bot owner
+    # check if user is guild owner or bot owner
     is_owner = await bot.is_owner(interaction.user)
     is_guild_owner = interaction.guild.owner_id == interaction.user.id
     
@@ -162,13 +158,12 @@ async def linkautomod(interaction: discord.Interaction, enabled: bool):
             ensure_guild_automod_setting(con, interaction.guild.id)
             set_automod_setting(con, interaction.guild.id, enabled)
         con.close()
-        
         status = "enabled" if enabled else "disabled"
         await interaction.response.send_message(f"✅ Link automod has been **{status}** for this server.")
         
     except Exception as e:
         await interaction.response.send_message(f"❌ An error occurred: {str(e)}", ephemeral=True)
-        print(f"Error in linkautomod command: {e}")
+        logger.error(f"Error in linkautomod command: {e}", e)
 
 if __name__ == '__main__':
     start_http_server(8000)
