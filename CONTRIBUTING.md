@@ -30,13 +30,15 @@ Having installed `python`, create a virtual environment to manage dependencies
 
 `python -m venv .`
 
-Activate the environment with `scripts\activate` (Windows) or `bin\activate` (Linux).
+Activate the environment with `scripts\activate` (Windows) or `source bin\activate` (Linux).
 
 Then install dependencies with `pip install -r requirements.txt`
 
 ## Project structure 
 
 The [unalix](https://github.com/AmanoTeam/Unalix/tree/master/unalix) library is archived. Its source is included in this project in the `unalix` folder.
+
+The `data.min.json` file is sourced from [https://docs.clearurls.xyz/latest/specs/rules/](https://docs.clearurls.xyz/latest/specs/rules/) because the version provided by Unalix was outdated. Pull requests to update this file and keep it in sync with the official ClearURLs ruleset are welcome!
 
 The bot itself is in `main.py`.
 

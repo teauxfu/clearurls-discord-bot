@@ -12,6 +12,7 @@ Have you ever noticed those `utm` and `fbclid` snippets in links? Those are used
 Disclaimer: This public instance is hosted on my Raspberry Pi and I make no guarantees of uptime or performance.
 
 ## Permissions
+
 The bot's permissions system is designed to be granular, minimal, and gracefully degrade in the absence of those unnecessary for basic function.
 
 - `Read Messages` and `Send Messages` are **required** to perform the cleaning.
@@ -22,6 +23,7 @@ The bot's permissions system is designed to be granular, minimal, and gracefully
 ![screenshot of default installation settings](/docs/default_install_settings.png)
 
 ## Self-Hosting
+
 It is very straightforward to host this yourself. If you do, I would love to know!
 
 1. Download the repository with `git clone https://github.com/DanielZTing/clearurls-discord-bot`
@@ -30,10 +32,22 @@ It is very straightforward to host this yourself. If you do, I would love to kno
 4. Add a bot and check the `bot` and `applications.commands` scopes and the above permissions in the OAuth2 tab
 5. Visit the generated link to invite the bot
 6. Copy the token from the Bot tab and paste `TOKEN=[your clipboard here]` into a file named `.env`
-7. Run with `python main.py`
+7. Add a line in your `.env` file for `DATABASE=[your database location]` with a file path, eg. `DATABASE=clearurls-discordbot.db`
+8. Run with `python main.py`
 
+### Enabling automoderation
+
+Server admins can enable an automatic moderation feature where messages with dirty links are automatically deleted, then the bot sends a mesage with a claned version of the original message content. 
+
+You can enable the setting using a slash command `/linkautomod [enabled: true]`.
 
 ## Privacy Policy
+
 I collect zero information.
 
-For servers using the optional feature to automatically delete messages with tracking links, some metadata about deleted messages is temporarily stored for up to 14 days. The only data stored is the user id, the message id, and the message timestamp. No message content is stored or logged. 
+## Contributors 
+
+- [danielzting](https://github.com/danielzting)
+- [jimcullenaus](https://github.com/jimcullenaus)
+- [teauxfu](https://github.com/teauxfu)
+  
