@@ -79,21 +79,21 @@ async def on_message(message: discord.Message):
         con.close()
         # there are two paths we can take in response
         # if the automod setting is disabled we simply add a new message with the links removed
-        whats_this = f"([what's this?](https://danielzting.github.io/clearurls-discord-bot#whats-this))"
+        whats_this = f"([what's this?](<https://danielzting.github.io/clearurls-discord-bot#whats-this>))"
         if not should_replace_message:
             # Suppress embeds for original message to avoid visual clutter
             if permissions.manage_messages:
                 await message.edit(suppress=True)
             # Send message and add reactions
-            text = f"It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed {whats_this}:\n{"\n".join(cleaned)}"
-            await message.reply(text, mention_author=False, silent=True)
+            text = f"It appears that {message.author.mention} sent one or more links with tracking parameters. Below are the same links with those fields removed {whats_this}:\n{"\n".join(cleaned)}"
+            await message.reply(text, silent=True)
         else :
             # if the automod setting is enabled we delete the offending message and repost the cleaned one
             cleaned_content = message.content
             for url in urls:
                 cleaned_content = cleaned_content.replace(url, clear_url(url))
-            text = f"User {message.author.mention} sent the following message, which was deleted and has automatically been cleaned from tracking links {whats_this}:\n\n{cleaned_content}"
-            await message.reply(text, mention_author=False, silent=True)
+            text = f"It appears {message.author.mention} sent one or more links with tracking parameters, so I deleted the message. Here's the original message content with tracking paramters removed {whats_this}:\n\n{cleaned_content}"
+            await message.reply(text, silent=True)
             await message.delete()
             deleted_messages.inc()
 
@@ -108,10 +108,11 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
-    original_author = message.mentions[0];
     if message.reference is None or message.author != bot.user:
         return
 
+    # at this point we know the reacted to message is from the bot, so we can be sure there's a single user mention
+    original_author = message.mentions[0];
     # determine if the user reacting is the one whose message we are working with
     permissions = message.channel.permissions_for(message.guild.me)
     original_channel = await bot.fetch_channel(message.reference.channel_id)
