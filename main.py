@@ -133,7 +133,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         deleted_messages.inc()
         logger.info(f"Deleted message {message.id} via reaction by user {payload.user_id}")
 
-@bot.tree.command(name="linkautomod", description="Enable or disable automaticly deleting messages containing dirty links then reposting them with tracking parameters removed")
+@bot.tree.command(name="linkautomod", description="Enable or disable automatic delete/repost of messages with dirty links removed")
 @commands.has_permissions(administrator=True)
 @commands.guild_only()
 async def set_automod_behavior(interaction: discord.Interaction, enabled: bool):
