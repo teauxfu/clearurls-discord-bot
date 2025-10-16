@@ -79,7 +79,7 @@ async def on_message(message: discord.Message):
         con.close()
         # there are two paths we can take in response
         # if the automod setting is disabled we simply add a new message with the links removed
-        whats_this = f"([what's this?](https://danielzting.github.io/clearurls-discord-bot/))"
+        whats_this = f"([what's this?](https://danielzting.github.io/clearurls-discord-bot#whats-this))"
         if not should_replace_message:
             # Suppress embeds for original message to avoid visual clutter
             if permissions.manage_messages:
