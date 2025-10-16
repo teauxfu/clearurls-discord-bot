@@ -1,5 +1,9 @@
+<!-- omit from toc -->
 # Setting up the development environment 
 
+- [Dev tools](#dev-tools)
+- [Setup](#setup)
+- [Project structure](#project-structure)
 
 ## Dev tools
 
