@@ -85,14 +85,14 @@ async def on_message(message: discord.Message):
             if permissions.manage_messages:
                 await message.edit(suppress=True)
             # Send message and add reactions
-            text = f"It appears that {message.author.mention} sent one or more links with tracking parameters. Below are the same links with those fields removed {whats_this}:\n{"\n".join(cleaned)}"
+            text = f"It appears that {message.author.mention} sent one or more links with tracking parameters. Below are the same links with with tracking parameters removed {whats_this}:\n\n{"\n".join(cleaned)}"
             await message.reply(text, silent=True)
         else :
             # if the automod setting is enabled we delete the offending message and repost the cleaned one
             cleaned_content = message.content
             for url in urls:
                 cleaned_content = cleaned_content.replace(url, clear_url(url))
-            text = f"It appears {message.author.mention} sent one or more links with tracking parameters, so I deleted the message. Here's the original message content with tracking paramters removed {whats_this}:\n\n{cleaned_content}"
+            text = f"It appears {message.author.mention} sent one or more links with tracking parameters, so I deleted the message. Here's the original message content with tracking parameters removed {whats_this}:\n\n{cleaned_content}"
             await message.reply(text, silent=True)
             await message.delete()
             deleted_messages.inc()
