@@ -31,6 +31,5 @@ def set_automod_setting(con: sqlite3.Connection, guild_id: int, replace_messages
     """
 
     cur = con.cursor()
-    param = {"replace_messages": replace_messages, "guild_id": guild_id}
-    cur.execute(sql_upsert, param)
+    cur.execute(sql_upsert, {"replace_messages": replace_messages, "guild_id": guild_id})
     cur.close()

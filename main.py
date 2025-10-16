@@ -7,21 +7,18 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from unalix import clear_url
 from prometheus_client import start_http_server, Summary, Counter, Gauge
-from database.util import get_dbcon, initialize_db
-from database.guildsettings import  get_automod_setting, set_automod_setting
+from database.util import get_dbcon
+from database.guildsettings import ensure_settings_table, get_automod_setting, set_automod_setting
 
 class ClearUrlsBot(commands.Bot):
     async def setup_hook(self):
-        # Database setup
         with get_dbcon() as con:
-            initialize_db(con)
+            ensure_settings_table(con)
         con.close()
 
-        # Sync slash commands
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} command(s)")
         
-        # Start background tasks
         self.loop.create_task(count_servers_members())
 
 intents = discord.Intents.default()
@@ -77,25 +74,24 @@ async def on_message(message: discord.Message):
         if not cleaned:
             return
         
-        # in case this guild was added after startup, make sure it has a row in the db
         with get_dbcon() as con:
             should_replace_message = get_automod_setting(con, message.guild.id)
         con.close()
         # there are two paths we can take in response
         # if the automod setting is disabled we simply add a new message with the links removed
+        whats_this = f"([what's this?](https://danielzting.github.io/clearurls-discord-bot/))"
         if not should_replace_message:
             # Suppress embeds for original message to avoid visual clutter
             if permissions.manage_messages:
                 await message.edit(suppress=True)
             # Send message and add reactions
-            text = f"It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed:\n{"\n".join(cleaned)}"
+            text = f"It appears that you have sent one or more links with tracking parameters. Below are the same links with those fields removed {whats_this}:\n{"\n".join(cleaned)}"
             await message.reply(text, mention_author=False, silent=True)
         else :
             # if the automod setting is enabled we delete the offending message and repost the cleaned one
             cleaned_content = message.content
             for url in urls:
                 cleaned_content = cleaned_content.replace(url, clear_url(url))
-            whats_this = f"([what's this?](https://danielzting.github.io/clearurls-discord-bot/))"
             text = f"User {message.author.mention} sent the following message, which was deleted and has automatically been cleaned from tracking links {whats_this}:\n\n{cleaned_content}"
             await message.reply(text, mention_author=False, silent=True)
             await message.delete()
@@ -152,6 +148,7 @@ async def set_automod_behavior(interaction: discord.Interaction, enabled: bool):
         con.close()
         status = "enabled" if enabled else "disabled"
         await interaction.response.send_message(f"✅ Link automod has been **{status}** for this server.")
+        logger.info(f"set replace messages setting to {status} for {interaction.guild.id}")
         
     except Exception as e:
         await interaction.response.send_message(f"❌ An error occurred: {str(e)} \n\n You can open a bug report [here](https://github.com/danielzting/clearurls-discord-bot/issues) 🪳", ephemeral=True)
