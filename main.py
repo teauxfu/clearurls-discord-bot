@@ -10,6 +10,8 @@ from prometheus_client import start_http_server, Summary, Counter, Gauge
 from database.util import get_dbcon
 from database.guildsettings import ensure_settings_table, get_automod_setting, set_automod_setting
 
+TRASH_EMOJI = '🗑️'
+
 class ClearUrlsBot(commands.Bot):
     async def setup_hook(self):
         with get_dbcon() as con:
@@ -56,7 +58,7 @@ async def on_message(message: discord.Message):
         # Add :wastebasket: emoji for easy deletion if necessary, but not for responses to slash commands (check for interaction metadata)
         message_is_command_response = message.interaction_metadata is not None
         if can_add_reactions and not message_is_command_response:
-            await message.add_reaction('🗑')
+            await message.add_reaction(TRASH_EMOJI)
     # Though this else is not necessary since the bot should never send
     # links with tracking parameters, include it anyways to be safe
     # against infinite recursion
@@ -102,33 +104,46 @@ async def on_message(message: discord.Message):
 @process_react_time.time()
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    # Delete messages if the original sender clicks the trash can react
-    if payload.emoji.name != '🗑' or payload.user_id == bot.user.id:
+    reaction_is_relevant =  payload.emoji.name == TRASH_EMOJI and payload.user_id != bot.user.id
+    if not reaction_is_relevant:
         return
 
     channel = await bot.fetch_channel(payload.channel_id)
     message = await channel.fetch_message(payload.message_id)
-    if message.reference is None or message.author != bot.user:
-        return
 
-    # at this point we know the reacted to message is from the bot, so we can be sure there's a single user mention
-    original_author = message.mentions[0];
-    # determine if the user reacting is the one whose message we are working with
-    permissions = message.channel.permissions_for(message.guild.me)
-    original_channel = await bot.fetch_channel(message.reference.channel_id)
-    reacting_user = await bot.fetch_user(payload.user_id)
-    # before we check the API to do this "auth check", see if this is a message we deleted
-    if permissions.manage_messages and original_author.id == reacting_user.id:
-        await message.delete()
-        deleted_messages.inc()
+    reacted_message_is_from_bot = message.author == bot.user
+    if not reacted_message_is_from_bot:
         return
     
-    # it doesn't look like this is a message we deleted during automod, so check the API
-    original_message = await original_channel.fetch_message(message.reference.message_id)
-    if permissions.manage_messages and original_message.author == reacting_user:
-        await message.delete()
-        deleted_messages.inc()
-        logger.info(f"Deleted message {message.id} via reaction by user {payload.user_id}")
+    permissions = message.channel.permissions_for(message.guild.me)
+    if not permissions.manage_messages:
+        return
+    
+    reacting_user = await bot.fetch_user(payload.user_id)
+    authorized_user = None
+    
+    is_reply = message.reference is not None
+    if is_reply:
+        try:
+            original_channel = await bot.fetch_channel(message.reference.channel_id)
+            original_message = await original_channel.fetch_message(message.reference.message_id)
+            authorized_user = original_message.author
+        except (discord.NotFound, discord.Forbidden):
+            pass
+    if authorized_user is None and len(message.mentions) > 0:
+        # as a fallback, get the original author from the mentions
+        authorized_user = message.mentions[0]
+    
+    should_delete = authorized_user and reacting_user.id == authorized_user.id
+    if should_delete:
+        try:
+            await message.delete()
+            deleted_messages.inc()
+            logger.info(f"Deleted message {message.id} via reaction by user {payload.user_id}")
+        except discord.Forbidden:
+            logger.exception(f"Missing permissions to delete message {message.id} in channel {channel.name}")
+        except discord.HTTPException as e:
+            logger.exception(f"Failed to delete message {message.id}: {e}")
 
 @bot.tree.command(name="linkautomod", description="Enable or disable automatic delete/repost of messages with dirty links removed")
 @commands.has_permissions(administrator=True)
