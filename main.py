@@ -46,6 +46,8 @@ async def count_servers_members():
 @process_message_time.time()
 @bot.event
 async def on_message(message: discord.Message):
+    if message.flags.ephemeral:
+        return
     messages.inc()
     permissions = message.channel.permissions_for(message.guild.me)
     can_add_reactions = (permissions.add_reactions 
