@@ -37,7 +37,7 @@ It is very straightforward to host this yourself. If you do, I would love to kno
 
 ### Enabling automoderation
 
-Server admins can enable an automatic moderation feature where messages with dirty links are automatically deleted, then the bot sends a mesage with a claned version of the original message content. 
+Server admins can enable an automatic moderation feature where messages with dirty links are automatically deleted, then the bot sends a mesage with a cleaned version of the original message content. 
 
 You can enable the setting using a slash command `/linkautomod [enabled: true]`.
 

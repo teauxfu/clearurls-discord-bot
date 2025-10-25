@@ -48,6 +48,6 @@ The bot itself is in `main.py`.
 
 The bot uses a sqlite table to persist server settings. Functions to initialize and interact with the database are in the `database` folder.
 
-`guildsettings.py` is for Discord server specific settings. Currently we use a small lookup table to store that flag.
+`guildsettings.py` is for Discord server specific settings. Currently we use a small lookup table to store server specific flags. So far we are not using an ORM layer and there is no handling for migrations. Be careful as you work to add additional settings.
 
 `util.py` has a function for getting a sqlite db connection with some flags that enable better support for timestamps.

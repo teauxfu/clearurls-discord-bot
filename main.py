@@ -1,22 +1,28 @@
 import asyncio
+import logging
 import os
 import re
+from contextlib import closing
+
 import discord
-import logging
 from discord.ext import commands
 from dotenv import load_dotenv
+from prometheus_client import Counter, Gauge, start_http_server, Summary
 from unalix import clear_url
-from prometheus_client import start_http_server, Summary, Counter, Gauge
+
+from database.guildsettings import (
+    ensure_settings_table,
+    get_automod_setting,
+    set_automod_setting,
+)
 from database.util import get_dbcon
-from database.guildsettings import ensure_settings_table, get_automod_setting, set_automod_setting
 
 TRASH_EMOJI = '🗑️'
 
 class ClearUrlsBot(commands.Bot):
     async def setup_hook(self):
-        with get_dbcon() as con:
+        with closing(get_dbcon()) as con:
             ensure_settings_table(con)
-        con.close()
 
         synced = await self.tree.sync()
         logger.info(f"Synced {len(synced)} command(s)")
@@ -78,9 +84,8 @@ async def on_message(message: discord.Message):
         if not cleaned:
             return
         
-        with get_dbcon() as con:
+        with closing(get_dbcon()) as con:
             should_replace_message = get_automod_setting(con, message.guild.id)
-        con.close()
         # there are two paths we can take in response
         # if the automod setting is disabled we simply add a new message with the links removed
         whats_this = f"([what's this?](<https://danielzting.github.io/clearurls-discord-bot#whats-this>))"
@@ -91,7 +96,7 @@ async def on_message(message: discord.Message):
             # Send message and add reactions
             text = f"It appears that {message.author.mention} sent one or more links with tracking parameters. Below are the same links with with tracking parameters removed {whats_this}:\n\n{"\n".join(cleaned)}"
             await message.reply(text, silent=True)
-        else :
+        else:
             # if the automod setting is enabled we delete the offending message and repost the cleaned one
             cleaned_content = message.content
             for url in urls:
@@ -121,6 +126,12 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if not permissions.manage_messages:
         return
     
+    # we need to perform an "auth check" to make sure the user reacting to the bot message
+    # is the same user that originally posted it. we only want to let the original author
+    # delete their own messages. first we try to get their user ID via props on the message 
+    # we also know that bot messages always mention the relevant user, so if that behavior
+    # stays consistent we can just rely on the first mention 
+
     reacting_user = await bot.fetch_user(payload.user_id)
     authorized_user = None
     
@@ -144,33 +155,25 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             logger.info(f"Deleted message {message.id} via reaction by user {payload.user_id}")
         except discord.Forbidden:
             logger.exception(f"Missing permissions to delete message {message.id} in channel {channel.name}")
-        except discord.HTTPException as e:
-            logger.exception(f"Failed to delete message {message.id}: {e}")
+        except discord.HTTPException:
+            logger.exception(f"Failed to delete message {message.id}")
 
 @bot.tree.command(name="linkautomod", description="Enable or disable automatic delete/repost of messages with dirty links removed")
 @commands.has_permissions(administrator=True)
 @commands.guild_only()
 async def set_automod_behavior(interaction: discord.Interaction, enabled: bool):
-    """Enable or disable link automoderation for this server"""
-    
-    # check if user is guild owner or bot owner
-    is_guild_owner = interaction.guild.owner_id == interaction.user.id
-    
-    if not (is_guild_owner):
-        await interaction.response.send_message("❌ You must be the server owner to use this command.", ephemeral=True)
-        return
-    
+    """Enable or disable link automoderation for this server"""  
+      
     try:
-        with get_dbcon() as con:
+        with closing(get_dbcon()) as con:
             set_automod_setting(con, interaction.guild.id, enabled)
-        con.close()
         status = "enabled" if enabled else "disabled"
         await interaction.response.send_message(f"✅ Link automod has been **{status}** for this server.")
         logger.info(f"set replace messages setting to {status} for {interaction.guild.id}")
         
-    except Exception as e:
-        await interaction.response.send_message(f"❌ An error occurred: {str(e)} \n\n You can open a bug report [here](https://github.com/danielzting/clearurls-discord-bot/issues) 🪳", ephemeral=True)
-        logger.exception(f"Error in linkautomod command: {e}", e)
+    except Exception:
+        await interaction.response.send_message(f"❌ An error occurred at the bot server. \n\n You can open a bug report [here](https://github.com/danielzting/clearurls-discord-bot/issues) 🪳", ephemeral=True)
+        logger.exception("Error in linkautomod command")
 
 if __name__ == '__main__':
     start_http_server(8000)
